@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scan to Join Queue - VoiceQueue</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    body {
+      background: #f1f5f9;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 1.5rem;
+    }
+    .kiosk-card {
+      background: #ffffff;
+      border-radius: 24px;
+      box-shadow: 0 20px 40px -10px rgba(0,0,0,0.1);
+      padding: 2.5rem;
+      max-width: 520px;
+      width: 100%;
+      text-align: center;
+      border: 1px solid var(--border-color);
+    }
+    .qr-frame {
+      background: #ffffff;
+      padding: 1.25rem;
+      border-radius: 20px;
+      display: inline-block;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.06);
+      border: 2px solid #e2e8f0;
+      margin: 1.5rem 0;
+    }
+    .qr-frame img {
+      width: 260px;
+      height: 260px;
+      display: block;
+    }
+    .steps {
+      display: flex;
+      justify-content: space-around;
+      margin: 1.5rem 0;
+      gap: 0.75rem;
+      text-align: center;
+    }
+    .step-item {
+      flex: 1;
+      font-size: 0.825rem;
+      color: var(--text-muted);
+      line-height: 1.3;
+    }
+    .step-icon {
+      font-size: 1.5rem;
+      margin-bottom: 0.35rem;
+      display: block;
+    }
+    .step-item strong {
+      display: block;
+      color: var(--text-main);
+      margin-bottom: 0.2rem;
+    }
+    .no-print {
+      margin-top: 1rem;
+      display: flex;
+      gap: 0.75rem;
+      justify-content: center;
+    }
+    @media print {
+      body {
+        background: #ffffff;
+        padding: 0;
+      }
+      .kiosk-card {
+        box-shadow: none;
+        border: none;
+        padding: 1rem;
+        max-width: 100%;
+      }
+      .no-print {
+        display: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="kiosk-card">
+    <div style="font-size: 1.25rem; font-weight: 800; color: var(--primary); display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+      <span>📢</span> VoiceQueue
+    </div>
+    <h1 style="font-size: 1.85rem; font-weight: 800; color: var(--text-main); margin-bottom: 0.25rem;">
+      Scan to Join Queue
+    </h1>
+    <p style="color: var(--text-muted); font-size: 0.95rem;">
+      No app required. Simply scan with your smartphone camera.
+    </p>
+
+    <!-- QR Code -->
+    <div class="qr-frame">
+      <img id="kiosk-qr-image" src="/api/qr" alt="Scan to join queue">
+    </div>
+
+    <!-- 3 Simple Steps -->
+    <div class="steps">
+      <div class="step-item">
+        <span class="step-icon">📷</span>
+        <strong>1. Scan QR</strong>
+        Open phone camera
+      </div>
+      <div class="step-item">
+        <span class="step-icon">🎟️</span>
+        <strong>2. Get Token</strong>
+        Tap to save your spot
+      </div>
+      <div class="step-item">
+        <span class="step-icon">🔔</span>
+        <strong>3. Be Alerted</strong>
+        We'll alert your phone
+      </div>
+    </div>
+
+    <!-- Live Serving Ticker -->
+    <div id="kiosk-serving-box" class="serving-box idle" style="margin-bottom: 0; padding: 1rem;">
+      <div class="serving-label" style="font-size: 0.75rem;">Currently Serving</div>
+      <div id="kiosk-serving-num" class="serving-number" style="font-size: 2.25rem;">--</div>
+      <div id="kiosk-serving-name" class="serving-customer" style="font-size: 0.85rem;">Waiting for counter to open</div>
+    </div>
+
+    <div class="no-print">
+      <button onclick="window.print()" class="btn btn-secondary btn-sm" style="width: auto;">
+        🖨️ Print Poster
+      </button>
+      <a href="/admin" class="btn btn-secondary btn-sm" style="width: auto;">
+        &larr; Back to Admin
+      </a>
+    </div>
+  </div>
+
+  <script>
+    // Fetch live status
+    async function updateServing() {
+      try {
+        const res = await fetch("/api/queue/status");
+        const data = await res.json();
+        const box = document.getElementById("kiosk-serving-box");
+        const numEl = document.getElementById("kiosk-serving-num");
+        const nameEl = document.getElementById("kiosk-serving-name");
+
+        if (data.currently_serving) {
+          box.className = "serving-box";
+          numEl.textContent = `#${data.currently_serving}`;
+          nameEl.textContent = data.currently_serving_name ? `Serving: ${data.currently_serving_name}` : "Serving now";
+        } else {
+          box.className = "serving-box idle";
+          numEl.textContent = "--";
+          nameEl.textContent = "Counter opening soon";
+        }
+      } catch (err) {
+        console.error("Failed to update kiosk status:", err);
+      }
+    }
+
+    // Load QR URL dynamically
+    async function initKiosk() {
+      try {
+        const res = await fetch("/api/qr/info");
+        const data = await res.json();
+        if (data.recommended_url) {
+          document.getElementById("kiosk-qr-image").src = `/api/qr?url=${encodeURIComponent(data.recommended_url)}`;
+        }
+      } catch (err) {
+        console.error("Failed to load QR info:", err);
+      }
+      updateServing();
+      setInterval(updateServing, 3000);
+    }
+
+    initKiosk();
+  </script>
+</body>
+</html>

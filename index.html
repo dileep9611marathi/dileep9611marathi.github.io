@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>VoiceQueue - Digital Queue Token</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <!-- Navigation Header -->
+  <header class="navbar">
+    <a href="/" class="logo">
+      <span>📢</span> VoiceQueue
+    </a>
+    <nav>
+      <a href="/admin" class="nav-link">Staff Admin &rarr;</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <!-- Currently Serving Display Banner -->
+    <div id="serving-banner" class="serving-box idle">
+      <div class="serving-label">Currently Serving</div>
+      <div id="serving-token-number" class="serving-number">--</div>
+      <div id="serving-customer-name" class="serving-customer">Waiting for counter to open</div>
+    </div>
+
+    <!-- STATE 1: Token Collection Form (Shown if user doesn't have an active token) -->
+    <div id="token-request-card" class="card">
+      <div id="qr-welcome-banner" style="display: none; margin-bottom: 1.25rem; background: #e0e7ff; border-left: 4px solid var(--primary); padding: 0.85rem; border-radius: 8px; font-size: 0.9rem; color: #3730a3;">
+        <span>📱</span>
+        <div><strong>Connected via QR Code!</strong> Enter your name below to claim your spot in line.</div>
+      </div>
+
+      <h1 class="card-title">Welcome!</h1>
+      <p class="card-subtitle">Take a digital token to save your spot in line without standing in a physical queue.</p>
+
+      <form id="token-form">
+        <div class="form-group">
+          <label for="customer-name" class="form-label">Your Name (Optional)</label>
+          <input type="text" id="customer-name" class="form-input" placeholder="e.g. Alex" maxlength="30" autocomplete="name">
+        </div>
+        <button type="submit" id="get-token-btn" class="btn btn-primary">
+          <span>🎟️</span> Get My Queue Token
+        </button>
+      </form>
+
+      <div class="callout-box" style="margin-top: 1.25rem;">
+        <span>ℹ️</span>
+        <div>
+          Current estimated wait per person: <strong id="est-rate-display">5 mins</strong>.
+        </div>
+      </div>
+    </div>
+
+    <!-- STATE 2: Active Token Tracker (Shown when user has a token) -->
+    <div id="token-tracker-card" class="card" style="display: none;">
+      <!-- Turn Alert (shown only when it's their turn) -->
+      <div id="turn-alert" class="turn-alert" style="display: none;">
+        <h3>🔔 It's Your Turn!</h3>
+        <p>Please proceed directly to the counter.</p>
+      </div>
+
+      <div class="token-hero">
+        <span id="user-token-status-badge" class="token-badge badge-waiting">Waiting in Line</span>
+        <div class="token-customer-name" id="user-token-greeting">Hello!</div>
+        <div class="token-number" id="user-token-number">#---</div>
+        <p class="card-subtitle" id="user-token-date">Collected just now</p>
+      </div>
+
+      <!-- Live metrics -->
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-label">People Ahead</div>
+          <div class="metric-value" id="user-people-ahead">0</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Estimated Wait</div>
+          <div class="metric-value" id="user-est-wait">0m</div>
+        </div>
+      </div>
+
+      <div id="user-status-message" class="callout-box">
+        <span>🕒</span>
+        <span id="user-message-text">Calculating queue position...</span>
+      </div>
+
+      <div style="margin-top: 1.5rem; display: flex; flex-direction: column; gap: 0.75rem;">
+        <button id="leave-queue-btn" class="btn btn-secondary btn-sm" style="width: 100%;">
+          Get a New Token / Reset
+        </button>
+      </div>
+
+      <div class="live-indicator">
+        <span class="pulse-dot"></span>
+        <span>Auto-updating live every 3s</span>
+      </div>
+    </div>
+  </main>
+
+  <!-- Floating Action Button for AI Assistant -->
+  <button id="chat-toggle-btn" class="chat-fab" aria-label="Open AI Assistant">
+    <span>🤖</span>
+    <span>Ask Assistant</span>
+  </button>
+
+  <!-- Slide-up Chat Drawer -->
+  <div id="chat-drawer" class="chat-drawer" style="display: none;">
+    <div class="chat-header">
+      <div class="chat-header-info">
+        <span style="font-size: 1.25rem;">🤖</span>
+        <div>
+          <div style="font-weight: 700; font-size: 0.95rem;">VoiceQueue Assistant</div>
+          <div style="font-size: 0.725rem; opacity: 0.9; display: flex; align-items: center; gap: 0.35rem;">
+            <span class="pulse-dot" style="width: 6px; height: 6px; background: #a7f3d0;"></span> Online &bull; Context Aware
+          </div>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 0.4rem;">
+        <button id="chat-mute-btn" class="chat-mute-btn" title="Toggle voice output">🔊</button>
+        <button id="chat-close-btn" class="chat-close-btn" title="Close Assistant">&times;</button>
+      </div>
+    </div>
+
+    <!-- Quick Prompt Chips -->
+    <div class="chat-chips">
+      <button type="button" class="chat-chip" data-query="What's my token?">🎟️ My Token</button>
+      <button type="button" class="chat-chip" data-query="How many people are ahead?">👥 Ahead?</button>
+      <button type="button" class="chat-chip" data-query="When will my turn come?">⏳ Wait Time</button>
+      <button type="button" class="chat-chip" data-query="What time does this office close?">🕒 Hours</button>
+      <button type="button" class="chat-chip" data-query="Where is counter 2?">📍 Counter 2</button>
+      <button type="button" class="chat-chip" data-query="What documents do I need?">📄 Documents</button>
+      <button type="button" class="chat-chip" data-query="Where is the pharmacy?">💊 Pharmacy</button>
+      <button type="button" class="chat-chip" data-query="Collect a token for me">⚡ Get Token</button>
+    </div>
+
+    <!-- Language Selector Bar -->
+    <div class="chat-lang-bar">
+      <label for="chat-lang-select">🌐 Reply in:</label>
+      <select id="chat-lang-select" class="chat-lang-select">
+        <option value="en">English</option>
+      </select>
+    </div>
+
+    <!-- Chat Messages -->
+    <div id="chat-messages" class="chat-messages">
+      <div class="chat-msg msg-bot">
+        <span class="msg-category-badge cat-casual">Assistant</span>
+        Hello! I can answer questions about your token, waiting times, counter directions, office hours, and facility information. How can I assist you?
+      </div>
+    </div>
+
+    <!-- Input Bar -->
+    <form id="chat-form" class="chat-input-bar">
+      <input type="text" id="chat-input" class="chat-input" placeholder="Ask about token, wait time, counters..." maxlength="150" autocomplete="off">
+      <span id="voice-status-hint" class="voice-status-hint" style="display:none;">Listening…</span>
+      <button type="button" id="chat-mic-btn" class="chat-mic-btn" title="Speak your question">🎤</button>
+      <button type="submit" id="chat-send-btn" class="chat-send-btn">Send</button>
+    </form>
+  </div>
+
+  <footer>
+    VoiceQueue MVP &bull; Smart Queue Management
+  </footer>
+
+  <script>
+    const STORAGE_KEY = "voicequeue_active_token";
+    let activeTokenNumber = localStorage.getItem(STORAGE_KEY);
+    let pollInterval = null;
+    let audioPlayed = false;
+
+    // Optional subtle sound chime when called
+    function playTurnAlertSound() {
+      if (audioPlayed) return;
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
+        osc.frequency.setValueAtTime(880.00, audioCtx.currentTime + 0.15); // A5
+        gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.5);
+        audioPlayed = true;
+      } catch (e) {
+        console.log("Audio alert not supported or user has not interacted yet.");
+      }
+    }
+
+    // UI elements
+    const servingBanner = document.getElementById("serving-banner");
+    const servingTokenNumEl = document.getElementById("serving-token-number");
+    const servingNameEl = document.getElementById("serving-customer-name");
+    const estRateDisplay = document.getElementById("est-rate-display");
+
+    const requestCard = document.getElementById("token-request-card");
+    const trackerCard = document.getElementById("token-tracker-card");
+    const tokenForm = document.getElementById("token-form");
+    const getTokenBtn = document.getElementById("get-token-btn");
+
+    const userTokenNumberEl = document.getElementById("user-token-number");
+    const userGreetingEl = document.getElementById("user-token-greeting");
+    const userBadgeEl = document.getElementById("user-token-status-badge");
+    const userPeopleAheadEl = document.getElementById("user-people-ahead");
+    const userEstWaitEl = document.getElementById("user-est-wait");
+    const userMessageEl = document.getElementById("user-message-text");
+    const turnAlertEl = document.getElementById("turn-alert");
+    const leaveQueueBtn = document.getElementById("leave-queue-btn");
+
+    // Initialize state
+    function init() {
+      // Show QR welcome banner if navigated from QR scan
+      if (window.location.pathname.includes("join") || window.location.search.includes("qr")) {
+        const qrBanner = document.getElementById("qr-welcome-banner");
+        if (qrBanner) qrBanner.style.display = "flex";
+      }
+
+      if (activeTokenNumber) {
+        showTrackerView();
+        fetchTokenStatus();
+      } else {
+        showRequestView();
+        fetchGeneralQueueStatus();
+      }
+
+      // Start live auto-polling every 3 seconds
+      if (pollInterval) clearInterval(pollInterval);
+      pollInterval = setInterval(() => {
+        if (activeTokenNumber) {
+          fetchTokenStatus();
+        } else {
+          fetchGeneralQueueStatus();
+        }
+      }, 3000);
+    }
+
+    function showRequestView() {
+      requestCard.style.display = "block";
+      trackerCard.style.display = "none";
+    }
+
+    function showTrackerView() {
+      requestCard.style.display = "none";
+      trackerCard.style.display = "block";
+    }
+
+    // Fetch general queue status for the banner
+    async function fetchGeneralQueueStatus() {
+      try {
+        const res = await fetch("/api/queue/status");
+        const data = await res.json();
+        if (data.success) {
+          updateServingBanner(data.currently_serving, data.currently_serving_name);
+          if (estRateDisplay) {
+            estRateDisplay.textContent = `${data.avg_service_time_mins} mins`;
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching queue status:", err);
+      }
+    }
+
+    // Fetch user token status and update UI
+    async function fetchTokenStatus() {
+      if (!activeTokenNumber) return;
+
+      try {
+        const res = await fetch(`/api/token/${activeTokenNumber}`);
+        if (res.status === 404) {
+          // Token no longer exists (e.g. queue was reset by admin)
+          localStorage.removeItem(STORAGE_KEY);
+          activeTokenNumber = null;
+          showRequestView();
+          fetchGeneralQueueStatus();
+          return;
+        }
+
+        const data = await res.json();
+        if (data.success) {
+          updateServingBanner(data.currently_serving, data.currently_serving_name);
+          updateUserTracker(data);
+        }
+      } catch (err) {
+        console.error("Error fetching token status:", err);
+      }
+    }
+
+    function updateServingBanner(servingNum, servingName) {
+      if (servingNum) {
+        servingBanner.className = "serving-box";
+        servingTokenNumEl.textContent = `#${servingNum}`;
+        servingNameEl.textContent = servingName ? `Serving: ${servingName}` : "Serving now";
+      } else {
+        servingBanner.className = "serving-box idle";
+        servingTokenNumEl.textContent = "--";
+        servingNameEl.textContent = "Waiting for counter to open";
+      }
+    }
+
+    function updateUserTracker(data) {
+      userTokenNumberEl.textContent = `#${data.token_number}`;
+      userGreetingEl.textContent = data.customer_name ? `Hello, ${data.customer_name}!` : "Your Token";
+      userPeopleAheadEl.textContent = data.people_ahead;
+      userEstWaitEl.textContent = `~${data.estimated_wait_mins} min${data.estimated_wait_mins === 1 ? '' : 's'}`;
+      userMessageEl.textContent = data.message;
+
+      // Status badge and alert logic
+      if (data.status === "serving") {
+        userBadgeEl.className = "token-badge badge-serving";
+        userBadgeEl.textContent = "NOW SERVING";
+        turnAlertEl.style.display = "block";
+        playTurnAlertSound();
+      } else if (data.status === "completed") {
+        userBadgeEl.className = "token-badge badge-completed";
+        userBadgeEl.textContent = "COMPLETED";
+        turnAlertEl.style.display = "none";
+      } else if (data.status === "cancelled") {
+        userBadgeEl.className = "token-badge badge-completed";
+        userBadgeEl.textContent = "CANCELLED";
+        turnAlertEl.style.display = "none";
+      } else {
+        userBadgeEl.className = "token-badge badge-waiting";
+        userBadgeEl.textContent = "WAITING IN LINE";
+        turnAlertEl.style.display = "none";
+      }
+    }
+
+    // Handle token creation form
+    tokenForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      getTokenBtn.disabled = true;
+      getTokenBtn.textContent = "Generating Token...";
+
+      const nameInput = document.getElementById("customer-name");
+      const name = nameInput.value.trim();
+
+      try {
+        const res = await fetch("/api/token/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: name })
+        });
+        const data = await res.json();
+
+        if (data.success && data.token) {
+          activeTokenNumber = data.token.token_number;
+          localStorage.setItem(STORAGE_KEY, activeTokenNumber);
+          audioPlayed = false;
+          showTrackerView();
+          updateServingBanner(data.token.currently_serving, null);
+          updateUserTracker(data.token);
+        } else {
+          alert("Could not generate token. Please try again.");
+        }
+      } catch (err) {
+        console.error("Error creating token:", err);
+        alert("Server connection error. Please try again.");
+      } finally {
+        getTokenBtn.disabled = false;
+        getTokenBtn.innerHTML = "<span>🎟️</span> Get My Queue Token";
+      }
+    });
+
+    // Leave queue / take new token
+    leaveQueueBtn.addEventListener("click", () => {
+      if (confirm("Do you want to clear your current token and return to the main screen?")) {
+        localStorage.removeItem(STORAGE_KEY);
+        activeTokenNumber = null;
+        audioPlayed = false;
+        document.getElementById("customer-name").value = "";
+        showRequestView();
+        fetchGeneralQueueStatus();
+      }
+    });
+
+    // =====================================================================
+    // AI Assistant Chat Logic
+    // =====================================================================
+    const chatToggleBtn = document.getElementById("chat-toggle-btn");
+    const chatCloseBtn = document.getElementById("chat-close-btn");
+    const chatDrawer = document.getElementById("chat-drawer");
+    const chatForm = document.getElementById("chat-form");
+    const chatInput = document.getElementById("chat-input");
+    const chatMessages = document.getElementById("chat-messages");
+    const chatMuteBtn = document.getElementById("chat-mute-btn");
+    const chatMicBtn = document.getElementById("chat-mic-btn");
+    const voiceStatusHint = document.getElementById("voice-status-hint");
+    const langSelect = document.getElementById("chat-lang-select");
+
+    function toggleChat(show) {
+      const willShow = show !== undefined ? show : chatDrawer.style.display === "none";
+      chatDrawer.style.display = willShow ? "flex" : "none";
+      if (willShow) {
+        setTimeout(() => chatInput.focus(), 150);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
+    }
+
+    chatToggleBtn.addEventListener("click", () => toggleChat());
+    chatCloseBtn.addEventListener("click", () => toggleChat(false));
+
+    // Handle suggestion chips
+    document.querySelectorAll(".chat-chip").forEach(chip => {
+      chip.addEventListener("click", () => {
+        const query = chip.getAttribute("data-query");
+        if (query) {
+          sendUserMessage(query);
+        }
+      });
+    });
+
+    chatForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const text = chatInput.value.trim();
+      if (text) {
+        sendUserMessage(text);
+        chatInput.value = "";
+      }
+    });
+
+    // -------------------------------------------------------
+    // VoiceSpeaker — TTS playback via /api/assistant/tts
+    // -------------------------------------------------------
+    const VoiceSpeaker = (() => {
+      let isMuted = false;
+      let currentAudio = null;
+
+      let speakGeneration = 0;
+      let ttsController = null;
+
+      function setMuteUI(muted) {
+        isMuted = muted;
+        chatMuteBtn.textContent = muted ? "🔇" : "🔊";
+        chatMuteBtn.title = muted ? "Unmute voice output" : "Mute voice output";
+        chatMuteBtn.classList.toggle("muted", muted);
+      }
+
+      function stop() {
+        speakGeneration++;
+        if (ttsController) {
+          try { ttsController.abort(); } catch (e) {}
+          ttsController = null;
+        }
+        if (currentAudio) {
+          try { currentAudio.pause(); } catch (e) {}
+          currentAudio.currentTime = 0;
+          currentAudio = null;
+        }
+        chatMuteBtn.classList.remove("speaking");
+      }
+
+      chatMuteBtn.addEventListener("click", () => {
+        setMuteUI(!isMuted);
+        if (isMuted) stop();
+      });
+
+      async function speak(text, bcp47) {
+        if (isMuted || !text) return;
+
+        const myGeneration = ++speakGeneration;
+        stop();
+        // stop() increments generation, so restore this request's generation.
+        const requestGeneration = speakGeneration;
+
+        // Convert bcp47 (e.g. "kn-IN") to gTTS lang code (e.g. "kn")
+        const lang = (bcp47 || "en-IN").split("-")[0];
+
+        try {
+          // Stop any currently playing audio
+          if (currentAudio) {
+            currentAudio.pause();
+            currentAudio = null;
+          }
+
+          const url = `/api/assistant/tts?text=${encodeURIComponent(text)}&lang=${encodeURIComponent(lang)}`;
+          ttsController = new AbortController();
+          const res = await fetch(url, { signal: ttsController.signal });
+          ttsController = null;
+          if (!res.ok || requestGeneration !== speakGeneration || isMuted) return;
+
+          const blob = await res.blob();
+          if (requestGeneration !== speakGeneration || isMuted) return;
+          const audioUrl = URL.createObjectURL(blob);
+          const audio = new Audio(audioUrl);
+          currentAudio = audio;
+
+          chatMuteBtn.classList.add("speaking");
+
+          audio.addEventListener("ended", () => {
+            chatMuteBtn.classList.remove("speaking");
+            URL.revokeObjectURL(audioUrl);
+            currentAudio = null;
+          });
+          audio.addEventListener("error", () => {
+            chatMuteBtn.classList.remove("speaking");
+            currentAudio = null;
+          });
+
+          audio.play().catch(() => {
+            // Autoplay blocked — silently ignore
+            chatMuteBtn.classList.remove("speaking");
+          });
+        } catch (e) {
+          chatMuteBtn.classList.remove("speaking");
+          console.warn("TTS error:", e);
+        }
+      }
+
+      return { speak, stop };
+    })();
+
+    // -------------------------------------------------------
+    // VoiceInput — Microphone via Web Speech API
+    // -------------------------------------------------------
+    const VoiceInput = (() => {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+      if (!SpeechRecognition) {
+        // Browser doesn't support speech recognition — hide mic button gracefully
+        if (chatMicBtn) chatMicBtn.style.display = "none";
+        return { supported: false };
+      }
+
+      let recognition = null;
+      let isRecording = false;
+
+      function getSpeechLang() {
+        // Input is intentionally English-only. Output language is separate.
+        return "en-IN";
+      }
+
+      function startRecording() {
+        if (isRecording) {
+          stopRecording();
+          return;
+        }
+
+        recognition = new SpeechRecognition();
+        recognition.continuous = false;
+        recognition.interimResults = true;
+        recognition.lang = getSpeechLang();
+        recognition.maxAlternatives = 1;
+
+        isRecording = true;
+        chatMicBtn.classList.add("recording");
+        chatMicBtn.title = "Stop recording";
+        voiceStatusHint.style.display = "inline";
+        chatInput.placeholder = "Listening…";
+
+        recognition.onresult = (event) => {
+          let interimText = "";
+          let finalText = "";
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const transcript = event.results[i][0].transcript;
+            if (event.results[i].isFinal) {
+              finalText += transcript;
+            } else {
+              interimText += transcript;
+            }
+          }
+          // Show interim transcript in the input box
+          chatInput.value = finalText || interimText;
+        };
+
+        recognition.onend = () => {
+          isRecording = false;
+          chatMicBtn.classList.remove("recording");
+          chatMicBtn.title = "Speak your question";
+          voiceStatusHint.style.display = "none";
+          chatInput.placeholder = "Ask about token, wait time, counters...";
+
+          const transcript = chatInput.value.trim();
+          if (transcript) {
+            // Auto-submit after a short delay so user can see what was heard
+            setTimeout(() => {
+              sendUserMessage(transcript);
+              chatInput.value = "";
+            }, 350);
+          }
+        };
+
+        recognition.onerror = (event) => {
+          isRecording = false;
+          chatMicBtn.classList.remove("recording");
+          voiceStatusHint.style.display = "none";
+          chatInput.placeholder = "Ask about token, wait time, counters...";
+          if (event.error === "not-allowed") {
+            appendChatMessage("Microphone access was denied. Please allow microphone access in your browser settings.", "bot", "OUT_OF_SCOPE");
+          }
+        };
+
+        try {
+          recognition.start();
+        } catch (e) {
+          isRecording = false;
+          chatMicBtn.classList.remove("recording");
+          voiceStatusHint.style.display = "none";
+        }
+      }
+
+      function stopRecording() {
+        if (recognition && isRecording) {
+          recognition.stop();
+        }
+      }
+
+      chatMicBtn.addEventListener("click", () => {
+        // IMPORTANT: stop TTS before opening the microphone so the assistant
+        // cannot hear its own voice and treat it as the next command.
+        VoiceSpeaker.stop();
+        startRecording();
+      });
+
+      return { supported: true, stop: stopRecording };
+    })();
+
+    // -------------------------------------------------------
+    // Populate language selector from /api/languages
+    // -------------------------------------------------------
+    (async function loadLanguages() {
+      try {
+        const res = await fetch("/api/languages");
+        const data = await res.json();
+        if (data.success && data.languages) {
+          langSelect.innerHTML = "";
+          Object.entries(data.languages).forEach(([code, info]) => {
+            const opt = document.createElement("option");
+            opt.value = code;
+            opt.textContent = `${info.native} (${info.name})`;
+            langSelect.appendChild(opt);
+          });
+          langSelect.value = "en";
+        }
+      } catch (e) {
+        console.warn("Could not load language list:", e);
+      }
+    })();
+
+    // -------------------------------------------------------
+    // sendUserMessage — patched to support output_language + TTS
+    // -------------------------------------------------------
+    async function sendUserMessage(text) {
+      appendChatMessage(text, "user");
+      chatInput.disabled = true;
+
+      // Show typing indicator
+      const typingEl = appendTypingIndicator();
+
+      // Get selected output language
+      const outputLanguage = langSelect ? langSelect.value : "en";
+
+      try {
+        const res = await fetch("/api/assistant/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: text,
+            token_number: activeTokenNumber,
+            output_language: outputLanguage
+          })
+        });
+        const data = await res.json();
+        typingEl.remove();
+
+        if (data.success) {
+          appendChatMessage(data.reply, "bot", data.category);
+
+          // Speak the reply via TTS (uses bcp47 from server response)
+          VoiceSpeaker.speak(data.reply, data.bcp47);
+
+          // Handle automatic actions (e.g. token created by assistant)
+          if (data.action && data.action.type === "TOKEN_CREATED") {
+            const newToken = data.action.token;
+            activeTokenNumber = newToken.token_number;
+            localStorage.setItem(STORAGE_KEY, activeTokenNumber);
+            audioPlayed = false;
+            showTrackerView();
+            updateServingBanner(newToken.currently_serving, null);
+            updateUserTracker(newToken);
+          }
+        } else {
+          appendChatMessage("Sorry, I encountered an issue. Please try again.", "bot", "OUT_OF_SCOPE");
+        }
+      } catch (err) {
+        typingEl.remove();
+        appendChatMessage("Could not reach the assistant server. Please check your connection.", "bot", "OUT_OF_SCOPE");
+      } finally {
+        chatInput.disabled = false;
+        chatInput.focus();
+      }
+    }
+
+    function appendChatMessage(text, sender, category) {
+      const msgDiv = document.createElement("div");
+      msgDiv.className = `chat-msg msg-${sender}`;
+
+      if (sender === "bot" && category) {
+        const badge = document.createElement("span");
+        const catClass = category === "QUEUE" ? "cat-queue" :
+                         category === "ORGANIZATION" ? "cat-org" :
+                         category === "CASUAL_CONVERSATION" ? "cat-casual" : "cat-oos";
+        badge.className = `msg-category-badge ${catClass}`;
+        badge.textContent = category.replace("_", " ");
+        msgDiv.appendChild(badge);
+      }
+
+      const textNode = document.createElement("div");
+      textNode.textContent = text;
+      msgDiv.appendChild(textNode);
+
+      chatMessages.appendChild(msgDiv);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+      return msgDiv;
+    }
+
+    function appendTypingIndicator() {
+      const typingDiv = document.createElement("div");
+      typingDiv.className = "chat-msg msg-bot";
+      typingDiv.innerHTML = '<span style="color: var(--text-muted); font-size: 0.8rem; font-style: italic;">Assistant is thinking...</span>';
+      chatMessages.appendChild(typingDiv);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+      return typingDiv;
+    }
+
+    // Run on page load
+    init();
+  </script>
+</body>
+</html>
