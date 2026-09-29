@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>VoiceQueue - Staff Admin Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .qr-admin-grid {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1.5rem;
+      text-align: center;
+    }
+    @media (min-width: 600px) {
+      .qr-admin-grid {
+        flex-direction: row;
+        align-items: center;
+        text-align: left;
+      }
+    }
+    .qr-admin-img-wrap {
+      background: #ffffff;
+      border: 2px solid var(--border-color);
+      border-radius: 16px;
+      padding: 0.75rem;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+      flex-shrink: 0;
+    }
+    .qr-admin-img-wrap img {
+      width: 170px;
+      height: 170px;
+      display: block;
+      border-radius: 8px;
+    }
+    .qr-admin-details {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      width: 100%;
+    }
+    .url-chip {
+      background: #f1f5f9;
+      border: 1px solid var(--border-color);
+      padding: 0.5rem 0.75rem;
+      border-radius: 8px;
+      font-size: 0.825rem;
+      font-family: monospace;
+      word-break: break-all;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <header class="navbar">
+    <a href="/admin" class="logo">
+      <span>⚙️</span> VoiceQueue <span>Staff</span>
+    </a>
+    <nav style="display: flex; gap: 0.5rem;">
+      <a href="/kiosk" class="nav-link" target="_blank">📺 Open Counter Kiosk</a>
+      <a href="/" class="nav-link" target="_blank">Customer View &UpperRightArrow;</a>
+    </nav>
+  </header>
+
+  <main class="container container-wide">
+    <!-- Quick Stats -->
+    <div class="admin-header-stats">
+      <div class="metric-card">
+        <div class="metric-label">Waiting in Line</div>
+        <div class="metric-value" id="stat-waiting">0</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Served Today</div>
+        <div class="metric-value" id="stat-completed">0</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Avg Service Time</div>
+        <div class="metric-value" id="stat-avg-time">5m</div>
+      </div>
+    </div>
+
+    <!-- Active Serving Card -->
+    <div class="card">
+      <div class="card-title">Currently Serving</div>
+      <div class="card-subtitle">The token currently called to your service desk</div>
+
+      <div id="admin-serving-banner" class="serving-box idle" style="margin-bottom: 1.25rem;">
+        <div class="serving-label">Active Token</div>
+        <div id="admin-serving-num" class="serving-number">--</div>
+        <div id="admin-serving-name" class="serving-customer">No active customer being served</div>
+      </div>
+
+      <div class="admin-actions">
+        <button id="call-next-btn" class="btn btn-success" style="font-size: 1.15rem; padding: 1rem;">
+          <span>📢</span> Call Next Customer
+        </button>
+      </div>
+
+      <div id="call-feedback" style="display: none; text-align: center; font-size: 0.95rem; font-weight: 600; color: var(--primary);"></div>
+    </div>
+
+    <!-- Customer Check-in QR Code Card -->
+    <div class="card">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;">
+        <div>
+          <h2 class="card-title" style="margin-bottom: 0.2rem;">📱 Customer Check-in QR Code</h2>
+          <p class="card-subtitle" style="margin-bottom: 0;">Customers scan this code with their phone camera to join the queue</p>
+        </div>
+      </div>
+
+      <div class="qr-admin-grid">
+        <div class="qr-admin-img-wrap">
+          <img id="admin-qr-img" src="/api/qr" alt="Queue Join QR Code">
+        </div>
+
+        <div class="qr-admin-details">
+          <div class="form-group" style="margin-bottom: 0.5rem;">
+            <label class="form-label" style="font-size: 0.8rem;">Select Target URL for Scanning:</label>
+            <select id="qr-target-select" class="form-input" style="padding: 0.4rem 0.6rem; font-size: 0.875rem;">
+              <option value="network" selected>Mobile / Wi-Fi Network URL (Recommended)</option>
+              <option value="host">Localhost / Browser URL</option>
+            </select>
+          </div>
+
+          <div class="url-chip">
+            <span id="qr-encoded-url">Loading URL...</span>
+            <button id="copy-url-btn" class="btn btn-secondary btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">
+              Copy
+            </button>
+          </div>
+
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <a href="/kiosk" target="_blank" class="btn btn-primary btn-sm" style="flex: 1; min-width: 140px; text-decoration: none;">
+              <span>📺</span> Fullscreen Poster
+            </a>
+            <a id="download-qr-btn" href="/api/qr" download="VoiceQueue-QR.png" class="btn btn-secondary btn-sm" style="flex: 1; min-width: 130px; text-decoration: none;">
+              <span>⬇️</span> Download QR
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live Waiting Queue -->
+    <div class="card">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <div>
+          <h2 class="card-title" style="margin-bottom: 0.15rem;">Waiting Queue</h2>
+          <p class="card-subtitle" style="margin-bottom: 0;">Customers waiting in chronological order</p>
+        </div>
+        <span class="live-indicator" style="margin-top: 0;">
+          <span class="pulse-dot"></span> Live
+        </span>
+      </div>
+
+      <div class="queue-table-container">
+        <table class="queue-table">
+          <thead>
+            <tr>
+              <th>Token #</th>
+              <th>Customer</th>
+              <th>Time Taken</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="waiting-table-body">
+            <tr>
+              <td colspan="4" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">
+                Loading queue data...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Organization & Facility Information Card -->
+    <div class="card">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+        <div>
+          <h2 class="card-title" style="margin-bottom: 0.2rem;">🏢 Organization & Facility Information</h2>
+          <p class="card-subtitle" style="margin-bottom: 0;">Configure venue details that the VoiceQueue AI Assistant will use to answer customer questions</p>
+        </div>
+      </div>
+
+      <form id="org-info-form" style="margin-top: 1.25rem;">
+        <div class="form-group">
+          <label for="org-name-input" class="form-label">Organization Name</label>
+          <input type="text" id="org-name-input" class="form-input" placeholder="e.g. VoiceQueue Service Center">
+        </div>
+
+        <div class="form-group">
+          <label for="org-hours-input" class="form-label">Opening & Closing Hours</label>
+          <textarea id="org-hours-input" class="form-input" rows="3" placeholder="e.g. Monday - Friday: 9:00 AM - 5:00 PM&#10;Saturday: 9:00 AM - 1:00 PM"></textarea>
+        </div>
+
+        <div class="form-group">
+          <label for="org-counters-input" class="form-label">Counter Directory & Locations</label>
+          <textarea id="org-counters-input" class="form-input" rows="3" placeholder="e.g. Counter 1: Inquiries & Verification&#10;Counter 2: Payments & Document Submission&#10;Counter 3: Express Service & Pharmacy"></textarea>
+        </div>
+
+        <div class="form-group">
+          <label for="org-services-input" class="form-label">Services Offered</label>
+          <textarea id="org-services-input" class="form-input" rows="2" placeholder="e.g. Token Registration, Document Verification, Payments, Certificate Collection"></textarea>
+        </div>
+
+        <div class="form-group">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+            <label class="form-label" style="margin-bottom: 0;">Frequently Asked Questions (FAQs)</label>
+            <button type="button" id="add-faq-btn" class="btn btn-secondary btn-sm" style="padding: 0.25rem 0.6rem; font-size: 0.8rem;">
+              + Add FAQ
+            </button>
+          </div>
+          <div id="faqs-container">
+            <!-- Dynamic FAQ items -->
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 1rem; align-items: center; margin-top: 1.25rem;">
+          <button type="submit" id="save-org-btn" class="btn btn-primary" style="width: auto; padding: 0.75rem 1.5rem;">
+            💾 Save Organization Info
+          </button>
+          <span id="org-save-status" style="font-size: 0.85rem; font-weight: 600; color: var(--success); display: none;">Saved successfully!</span>
+        </div>
+      </form>
+    </div>
+
+    <!-- Queue Settings & Controls -->
+    <div class="card">
+      <h3 class="card-title">Queue Settings</h3>
+      <p class="card-subtitle">Tune estimation parameters or reset daily queue</p>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end;">
+        <div class="form-group" style="margin-bottom: 0; flex: 1; min-width: 200px;">
+          <label for="avg-time-input" class="form-label">Average Service Time (minutes per person)</label>
+          <input type="number" id="avg-time-input" class="form-input" min="1" max="60" value="5">
+        </div>
+        <button id="save-settings-btn" class="btn btn-secondary btn-sm" style="height: 44px; width: auto; padding: 0 1.25rem;">
+          Save Setting
+        </button>
+      </div>
+
+      <hr style="border: none; border-top: 1px solid var(--border-color); margin: 1.5rem 0;">
+
+      <div>
+        <h4 style="font-size: 0.95rem; font-weight: 700; color: var(--danger); margin-bottom: 0.25rem;">Danger Zone</h4>
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.75rem;">
+          Clear all tokens and restart token numbering from 101.
+        </p>
+        <button id="reset-queue-btn" class="btn btn-danger-outline btn-sm">
+          <span>🗑️</span> Reset Entire Queue
+        </button>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    VoiceQueue Staff Dashboard &bull; Mobile & Desktop Ready
+  </footer>
+
+  <script>
+    const statWaiting = document.getElementById("stat-waiting");
+    const statCompleted = document.getElementById("stat-completed");
+    const statAvgTime = document.getElementById("stat-avg-time");
+
+    const adminServingBanner = document.getElementById("admin-serving-banner");
+    const adminServingNum = document.getElementById("admin-serving-num");
+    const adminServingName = document.getElementById("admin-serving-name");
+    const callNextBtn = document.getElementById("call-next-btn");
+    const callFeedback = document.getElementById("call-feedback");
+
+    const waitingTableBody = document.getElementById("waiting-table-body");
+    const avgTimeInput = document.getElementById("avg-time-input");
+    const saveSettingsBtn = document.getElementById("save-settings-btn");
+    const resetQueueBtn = document.getElementById("reset-queue-btn");
+
+    // QR Code Elements
+    const adminQrImg = document.getElementById("admin-qr-img");
+    const qrTargetSelect = document.getElementById("qr-target-select");
+    const qrEncodedUrl = document.getElementById("qr-encoded-url");
+    const copyUrlBtn = document.getElementById("copy-url-btn");
+    const downloadQrBtn = document.getElementById("download-qr-btn");
+
+    let qrInfoData = { network_url: "", host_url: "" };
+
+    async function setupQrCode() {
+      try {
+        const res = await fetch("/api/qr/info");
+        qrInfoData = await res.json();
+        updateQrDisplay();
+      } catch (e) {
+        console.error("Failed to load QR info:", e);
+      }
+    }
+
+    function updateQrDisplay() {
+      const mode = qrTargetSelect.value;
+      const targetUrl = mode === "network" ? (qrInfoData.network_url || window.location.origin + "/join") : (qrInfoData.host_url || window.location.origin + "/join");
+      qrEncodedUrl.textContent = targetUrl;
+      const qrApiUrl = `/api/qr?url=${encodeURIComponent(targetUrl)}`;
+      adminQrImg.src = qrApiUrl;
+      downloadQrBtn.href = qrApiUrl;
+    }
+
+    qrTargetSelect.addEventListener("change", updateQrDisplay);
+
+    copyUrlBtn.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(qrEncodedUrl.textContent);
+        const originalText = copyUrlBtn.textContent;
+        copyUrlBtn.textContent = "Copied!";
+        setTimeout(() => { copyUrlBtn.textContent = originalText; }, 1500);
+      } catch (err) {
+        alert("URL: " + qrEncodedUrl.textContent);
+      }
+    });
+
+    async function loadAdminData() {
+      try {
+        const res = await fetch("/api/admin/queue");
+        const data = await res.json();
+
+        if (data.success) {
+          // Update stats
+          statWaiting.textContent = data.waiting.length;
+          statCompleted.textContent = data.completed.length;
+          statAvgTime.textContent = `${data.avg_service_time_mins}m`;
+          if (document.activeElement !== avgTimeInput) {
+            avgTimeInput.value = data.avg_service_time_mins;
+          }
+
+          // Update currently serving banner
+          if (data.currently_serving) {
+            adminServingBanner.className = "serving-box";
+            adminServingNum.textContent = `#${data.currently_serving.token_number}`;
+            adminServingName.textContent = `Customer: ${data.currently_serving.customer_name || 'Guest'}`;
+          } else {
+            adminServingBanner.className = "serving-box idle";
+            adminServingNum.textContent = "--";
+            adminServingName.textContent = "No active customer being served";
+          }
+
+          // Render waiting table
+          if (data.waiting.length === 0) {
+            waitingTableBody.innerHTML = `
+              <tr>
+                <td colspan="4" style="text-align: center; color: var(--text-muted); padding: 2rem;">
+                  No customers currently waiting in line.
+                </td>
+              </tr>
+            `;
+          } else {
+            waitingTableBody.innerHTML = data.waiting.map(item => `
+              <tr>
+                <td><span class="token-pill">#${item.token_number}</span></td>
+                <td><strong>${escapeHtml(item.customer_name || 'Guest')}</strong></td>
+                <td style="color: var(--text-muted); font-size: 0.85rem;">${formatTime(item.created_at)}</td>
+                <td><span class="token-badge badge-waiting">Waiting</span></td>
+              </tr>
+            `).join("");
+          }
+        }
+      } catch (err) {
+        console.error("Error loading admin queue:", err);
+      }
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement("div");
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    function formatTime(isoString) {
+      if (!isoString) return "--";
+      const parts = isoString.split(" ");
+      return parts.length > 1 ? parts[1] : isoString;
+    }
+
+    // Call Next Token
+    callNextBtn.addEventListener("click", async () => {
+      callNextBtn.disabled = true;
+      callFeedback.style.display = "none";
+
+      try {
+        const res = await fetch("/api/admin/call-next", { method: "POST" });
+        const data = await res.json();
+
+        if (data.success) {
+          callFeedback.style.display = "block";
+          callFeedback.textContent = data.message;
+          await loadAdminData();
+        } else {
+          alert("Error calling next customer.");
+        }
+      } catch (err) {
+        console.error("Error calling next:", err);
+        alert("Failed to communicate with server.");
+      } finally {
+        callNextBtn.disabled = false;
+      }
+    });
+
+    // Save Service Time Settings
+    saveSettingsBtn.addEventListener("click", async () => {
+      const val = parseInt(avgTimeInput.value);
+      if (!val || val < 1) {
+        alert("Please enter a valid time of at least 1 minute.");
+        return;
+      }
+
+      saveSettingsBtn.disabled = true;
+      try {
+        const res = await fetch("/api/admin/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ avg_service_time_mins: val })
+        });
+        const data = await res.json();
+        if (data.success) {
+          alert(`Average service time updated to ${val} minutes!`);
+          loadAdminData();
+        } else {
+          alert(data.error || "Failed to update setting");
+        }
+      } catch (err) {
+        alert("Server error updating setting");
+      } finally {
+        saveSettingsBtn.disabled = false;
+      }
+    });
+
+    // Reset Queue
+    resetQueueBtn.addEventListener("click", async () => {
+      if (confirm("Are you sure you want to RESET the entire queue? All active and completed tokens will be wiped, and numbering will reset to 101.")) {
+        try {
+          const res = await fetch("/api/admin/reset", { method: "POST" });
+          const data = await res.json();
+          if (data.success) {
+            alert("Queue has been reset!");
+            loadAdminData();
+          }
+        } catch (err) {
+          alert("Failed to reset queue");
+        }
+      }
+    });
+
+    // Organization Info Elements
+    const orgInfoForm = document.getElementById("org-info-form");
+    const orgNameInput = document.getElementById("org-name-input");
+    const orgHoursInput = document.getElementById("org-hours-input");
+    const orgCountersInput = document.getElementById("org-counters-input");
+    const orgServicesInput = document.getElementById("org-services-input");
+    const faqsContainer = document.getElementById("faqs-container");
+    const addFaqBtn = document.getElementById("add-faq-btn");
+    const saveOrgBtn = document.getElementById("save-org-btn");
+    const orgSaveStatus = document.getElementById("org-save-status");
+
+    let currentFaqs = [];
+
+    async function loadOrgInfo() {
+      try {
+        const res = await fetch("/api/org-info");
+        const json = await res.json();
+        if (json.success && json.data) {
+          const d = json.data;
+          orgNameInput.value = d.org_name || "";
+          orgHoursInput.value = d.opening_hours || "";
+          orgCountersInput.value = d.counter_info || "";
+          orgServicesInput.value = d.services || "";
+          currentFaqs = Array.isArray(d.faqs) ? d.faqs : [];
+          renderFaqs();
+        }
+      } catch (e) {
+        console.error("Failed to load org info:", e);
+      }
+    }
+
+    function renderFaqs() {
+      if (currentFaqs.length === 0) {
+        faqsContainer.innerHTML = '<p style="color: var(--text-muted); font-size: 0.85rem; font-style: italic;">No FAQs added yet. Click "+ Add FAQ" above.</p>';
+        return;
+      }
+
+      faqsContainer.innerHTML = currentFaqs.map((faq, idx) => `
+        <div class="faq-row" data-index="${idx}">
+          <button type="button" class="faq-row-delete" onclick="removeFaq(${idx})" title="Remove FAQ">&times;</button>
+          <div style="margin-bottom: 0.4rem; padding-right: 1.5rem;">
+            <input type="text" class="form-input faq-question" style="font-weight: 600; font-size: 0.85rem; padding: 0.4rem 0.6rem;" 
+                   placeholder="Question (e.g. Where is the pharmacy?)" value="${escapeHtml(faq.question || '')}">
+          </div>
+          <div>
+            <textarea class="form-input faq-answer" rows="2" style="font-size: 0.85rem; padding: 0.4rem 0.6rem;" 
+                      placeholder="Answer...">${escapeHtml(faq.answer || '')}</textarea>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    window.removeFaq = function(idx) {
+      syncFaqsFromDOM();
+      currentFaqs.splice(idx, 1);
+      renderFaqs();
+    };
+
+    addFaqBtn.addEventListener("click", () => {
+      syncFaqsFromDOM();
+      currentFaqs.push({ question: "", answer: "" });
+      renderFaqs();
+    });
+
+    function syncFaqsFromDOM() {
+      const rows = faqsContainer.querySelectorAll(".faq-row");
+      const updated = [];
+      rows.forEach(r => {
+        const q = r.querySelector(".faq-question").value.trim();
+        const a = r.querySelector(".faq-answer").value.trim();
+        if (q || a) {
+          updated.push({ question: q, answer: a });
+        }
+      });
+      currentFaqs = updated;
+    }
+
+    orgInfoForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      syncFaqsFromDOM();
+      saveOrgBtn.disabled = true;
+      orgSaveStatus.style.display = "none";
+
+      const payload = {
+        org_name: orgNameInput.value.trim(),
+        opening_hours: orgHoursInput.value.trim(),
+        counter_info: orgCountersInput.value.trim(),
+        services: orgServicesInput.value.trim(),
+        faqs: currentFaqs
+      };
+
+      try {
+        const res = await fetch("/api/admin/org-info", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const resJson = await res.json();
+        if (resJson.success) {
+          orgSaveStatus.style.display = "inline";
+          setTimeout(() => { orgSaveStatus.style.display = "none"; }, 3000);
+        } else {
+          alert("Error saving organization info");
+        }
+      } catch (err) {
+        alert("Server error saving organization info");
+      } finally {
+        saveOrgBtn.disabled = false;
+      }
+    });
+
+    // Initialize
+    setupQrCode();
+    loadAdminData();
+    loadOrgInfo();
+    setInterval(loadAdminData, 3000);
+  </script>
+</body>
+</html>
